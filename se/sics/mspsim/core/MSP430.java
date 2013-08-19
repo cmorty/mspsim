@@ -223,22 +223,22 @@ public class MSP430 extends MSP430Core {
     lastMicrosDelta += jumpMicros;
 
     if (microClockReady) {
-    /* check that we did not miss any events (by comparing with last return value) */
-    maxCycles = lastMicrosCycles + (lastMicrosDelta * dcoFrq) / 1000000;
-    if (cpuOff) {
-      if(maxCycles > nextEventCycles) {
-        /* back this time again... */
-        lastMicrosDelta -= jumpMicros;
-        printEventQueues(System.out);
-        throw new IllegalArgumentException("Jumping to a time that is further than possible in LPM maxCycles:" + 
-            maxCycles + " cycles: " + cycles + " nextEventCycles: " + nextEventCycles);
-      }
-    } else if (maxCycles > cycles) {
-      /* back this time again... */
-      lastMicrosDelta -= jumpMicros;
-      throw new IllegalArgumentException("Jumping to a time that is further than possible not LPM maxCycles:" + 
-          maxCycles + " cycles: " + cycles);
-    }
+	    /* check that we did not miss any events (by comparing with last return value) */
+	    maxCycles = lastMicrosCycles + (lastMicrosDelta * dcoFrq) / 1000000;
+	    if (cpuOff) {
+	      if(maxCycles > nextEventCycles) {
+	        /* back this time again... */
+	        lastMicrosDelta -= jumpMicros;
+	        printEventQueues(System.out);
+	        throw new IllegalArgumentException("Jumping to a time that is further than possible in LPM maxCycles:" + 
+	            maxCycles + " cycles: " + cycles + " nextEventCycles: " + nextEventCycles);
+	      }
+	    } else if (maxCycles > cycles) {
+	      /* back this time again... */
+	      lastMicrosDelta -= jumpMicros;
+	      throw new IllegalArgumentException("Jumping to a time that is further than possible not LPM maxCycles:" + 
+	          maxCycles + " cycles: " + cycles);
+	    }
 
     }
     microClockReady = true;

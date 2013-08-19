@@ -47,7 +47,8 @@ import se.sics.mspsim.util.ArrayFIFO;
 import se.sics.mspsim.util.CCITT_CRC;
 import se.sics.mspsim.util.Utils;
 
-public class CC2420 extends Radio802154 implements USARTListener {
+public class CC2420 extends Radio802154 implements USARTListener {	
+	
 
   public enum Reg {
     SNOP, SXOSCON, STXCAL, SRXON, /* 0x00 */
@@ -260,8 +261,10 @@ public class CC2420 extends Radio802154 implements USARTListener {
   /* RSSI is an externally set value of the RSSI for this CC2420 */
   /* low RSSI => CCA = true in normal mode */
 
-  private int rssi = -100;
   private static int RSSI_OFFSET = -45; /* cc2420 datasheet */
+  private int rssi = -100 - RSSI_OFFSET;
+  private int rssilog[] = {rssi,rssi,rssi,rssi,rssi,rssi,rssi,rssi}; // 8 values according to the datasheet
+  
   /* current CCA value */
   private boolean cca = false;
 
@@ -382,6 +385,9 @@ public class CC2420 extends Radio802154 implements USARTListener {
       }
     }
   };
+  
+
+  
   private boolean currentCCA;
   private boolean currentSFD;
   private boolean currentFIFO;
@@ -427,6 +433,8 @@ public class CC2420 extends Radio802154 implements USARTListener {
   
   private void reset() {
       setReg(REG_MDMCTRL0, 0x0ae2);
+      registers[REG_RSSI] =  0xE000 | (registers[REG_RSSI]  & 0xFF);
+      rssiShiftEvent.execute(0);
   }
   
   private boolean setState(RadioState state) {
@@ -601,7 +609,7 @@ public class CC2420 extends Radio802154 implements USARTListener {
                   if (rxread == 0) {
                       rxCrc.setCRC(0);
                       rxlen = data & 0xff;
-                      //System.out.println("Starting to get packet at: " + rxfifoWritePos + " len = " + rxlen);
+                      //log("Starting to get packet at: " + rxfifoWritePos + " len = " + rxlen);
                       decodeAddress = addressDecode;
                       if (logLevel > INFO) log("RX: Start frame length " + rxlen);
                       // FIFO pin goes high after length byte is written to RXFIFO
@@ -677,7 +685,7 @@ public class CC2420 extends Radio802154 implements USARTListener {
                   // In RX mode, FIFOP goes high, if threshold is higher than frame length....
 
                   // Here we check the CRC of the packet!
-                  //System.out.println("Reading from " + ((rxfifoWritePos + 128 - 2) & 127));
+                  //log("Reading from " + ((rxfifoWritePos + 128 - 2) & 127));
                   int crc = rxFIFO.get(-2) << 8;
                   crc += rxFIFO.get(-1); //memory[RAM_RXFIFO + ((rxfifoWritePos + 128 - 1) & 127)];
 
@@ -717,42 +725,52 @@ public class CC2420 extends Radio802154 implements USARTListener {
 
   private void setReg(int address, int data) {
       int oldValue = registers[address];
-      registers[address] = data;
-      switch(address) {
-      case REG_IOCFG0:
-          fifopThr = data & FIFOP_THR;
-          if (logLevel > INFO) log("IOCFG0: 0x" + Utils.hex16(oldValue) + " => 0x" + Utils.hex16(data));
-          if ((oldValue & POLARITY_MASK) != (data & POLARITY_MASK)) {
-              // Polarity has changed - must update pins
-              setFIFOP(currentFIFOP);
-              setFIFO(currentFIFO);
-              setSFD(currentSFD);
-              setCCA(currentCCA);
-          }
-          break;
-      case REG_IOCFG1:
-          if (logLevel > INFO)
-            log("IOCFG1: SFDMUX "
-                          + ((registers[address] & SFDMUX) >> SFDMUX)
-                          + " CCAMUX: " + (registers[address] & CCAMUX));
-          updateCCA();
-          break;
-      case REG_MDMCTRL0:
-          addressDecode = (data & ADR_DECODE) != 0;
-          autoCRC = (data & ADR_AUTOCRC) != 0;
-          autoAck = (data & AUTOACK) != 0;
-          break;
-      case REG_FSCTRL: {
-          ChannelListener listener = this.channelListener;
-          if (listener != null) {
-              int oldChannel = activeChannel;
-              updateActiveFrequency();
-              if (oldChannel != activeChannel) {
-                  listener.channelChanged(activeChannel);
-              }
-          }
-          break;
+      switch(address){
+    	  case REG_RSSI:
+    		  registers[address] = (registers[address] & 0xFF) | (data & 0xFF00);
+    		  break;
+    	  default:
+    		  registers[address] = data;
+    	  
       }
+      
+      
+      
+      switch(address) {
+	      case REG_IOCFG0:
+	          fifopThr = data & FIFOP_THR;
+	          if (logLevel > INFO) log("IOCFG0: 0x" + Utils.hex16(oldValue) + " => 0x" + Utils.hex16(data));
+	          if ((oldValue & POLARITY_MASK) != (data & POLARITY_MASK)) {
+	              // Polarity has changed - must update pins
+	              setFIFOP(currentFIFOP);
+	              setFIFO(currentFIFO);
+	              setSFD(currentSFD);
+	              setCCA(currentCCA);
+	          }
+	          break;
+	      case REG_IOCFG1:
+	          if (logLevel > INFO)
+	            log("IOCFG1: SFDMUX "
+	                          + ((registers[address] & SFDMUX) >> SFDMUX)
+	                          + " CCAMUX: " + (registers[address] & CCAMUX));
+	          updateCCA();
+	          break;
+	      case REG_MDMCTRL0:
+	          addressDecode = (data & ADR_DECODE) != 0;
+	          autoCRC = (data & ADR_AUTOCRC) != 0;
+	          autoAck = (data & AUTOACK) != 0;
+	          break;
+	      case REG_FSCTRL: {
+	          ChannelListener listener = this.channelListener;
+	          if (listener != null) {
+	              int oldChannel = activeChannel;
+	              updateActiveFrequency();
+	              if (oldChannel != activeChannel) {
+	                  listener.channelChanged(activeChannel);
+	              }
+	          }
+	          break;
+	      }
       }
       configurationChanged(address, oldValue, data);
   }
@@ -1188,17 +1206,20 @@ public class CC2420 extends Radio802154 implements USARTListener {
   
   private void updateCCA() {
     boolean oldCCA = cca;
+    
     int ccaMux = (registers[REG_IOCFG1] & CCAMUX);
 
     if (ccaMux == CCAMUX_CCA) {
       /* If RSSI is less than -95 then we have CCA / clear channel! */
-      cca = (status & STATUS_RSSI_VALID) > 0 && rssi < -95;
+      cca = (status & STATUS_RSSI_VALID) > 0 && (byte)(registers[REG_RSSI] & 0xFF) < (byte)(registers[REG_RSSI] >> 8);
+      log("CCA: " + cca  + " - " +  (byte)(registers[REG_RSSI] & 0xFF) + " "  + (byte)(registers[REG_RSSI] >> 8));
     } else if (ccaMux == CCAMUX_XOSC16M_STABLE) {
       cca = (status & STATUS_XOSC16M_STABLE) > 0;
     }
     
     if (cca != oldCCA) {
       setInternalCCA(cca);
+     // log("CCA-Toggle: " + cca);
     }
   }
 
@@ -1303,26 +1324,90 @@ public class CC2420 extends Radio802154 implements USARTListener {
   public int getLQI() {
       return corrval;
   }
-
-  public void setRSSI(int power) {
-    final int minp = -128 + RSSI_OFFSET;
-    final int maxp = 128 + RSSI_OFFSET;
-    if (power < minp) {
-        power = -minp;
-    }
-    if(power > maxp){
-        power = maxp;
-    }
-
-    if (logLevel > INFO) log("external setRSSI to: " + power);
-
-    rssi = power;
-    registers[REG_RSSI] = power - RSSI_OFFSET;
-    updateCCA();
+  
+  private void forceRSSI(){
+	int i;
+	for(i = 0; i < rssilog.length ; i++){
+  	  rssilog[i] = rssi;
+  	}
+	log("Forcing to " + rssi);
+  	registers[REG_RSSI] = (registers[REG_RSSI] & 0xFF00) | (rssi & 0xFF);
   }
+  
+  
+	private TimeEvent rssiShiftEvent = new TimeEvent(0, "RSSI-Shift") {
+		public void execute(long t) {
+			int i;
+			int sum = 0;
+			
+			switch (stateMachine) {
+				case RX_CALIBRATE:
+				case RX_SFD_SEARCH:
+				case RX_WAIT:
+				case RX_FRAME:
+				case RX_OVERFLOW:
+					forceRSSI(); //No need to update CCA!
+					remove();
+					return;
+				default:
+					break;
+			}
+			
+			if(isScheduled()){
+				log("Already Sheduled");
+				return;
+			}
+			//Shift
+			for (i = 0; i < rssilog.length - 1; i++) {
+				sum += rssilog[i];
+				rssilog[i] = rssilog[i + 1];
+			}
+			sum += rssilog[i];
+			rssilog[i] = rssi;
+			
+			registers[REG_RSSI] = (registers[REG_RSSI] & 0xFF00) | ((sum / rssilog.length) & 0xFF);
+			
+			//Check and Calculate
+			int sameval = rssilog[0];
+			Boolean same = true;
+			for (i = 0; i < rssilog.length; i++) {				
+				if (rssilog[i] != sameval)
+					same = false;
+			}
+			
+			log("RSSI-Shift: " + (sum / rssilog.length) );
+
+			// Only shedule if we have to
+			if (!same) {
+				log("Reshed");
+				cpu.scheduleTimeEventMillis(rssiShiftEvent, SYMBOL_PERIOD);
+			}
+			updateCCA();
+			
+		}
+	};
+
+	public void setRSSI(int power) {
+		power -= RSSI_OFFSET;
+		if (power < -128) {
+			power = -128;
+		}
+		if (power > 127) {
+			power = 127;
+		}
+		
+		if (logLevel > INFO)
+			log("external setRSSI to: " + power + RSSI_OFFSET);
+		
+		log("SET RSSI to " + (power + RSSI_OFFSET));
+		
+		rssi = power;
+		rssiShiftEvent.execute(0);
+		
+	}
 
   public int getRSSI() {
-    return rssi;
+    return rssi + RSSI_OFFSET;
   }
 
   public int getOutputPower() {
