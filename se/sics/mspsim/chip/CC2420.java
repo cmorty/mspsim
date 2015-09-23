@@ -1371,6 +1371,15 @@ public class CC2420 extends Radio802154 implements USARTListener {
     setVRegOn(false);
   }
 
+  public void interfered() {
+    if(stateMachine == RadioState.RX_FRAME){
+      rxFIFO.restore();
+      setSFD(false);
+      setFIFO(rxFIFO.length() > 0);
+      setState(RadioState.RX_SFD_SEARCH);
+    } 
+  }
+
   public void setVRegOn(boolean newOn) {
     if(on == newOn) return;
 
